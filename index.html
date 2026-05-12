@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TOZ BGM Scanner</title>
+  <style>
+    :root {
+      --bg: #101827;
+      --card: #162235;
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --accent: #7dd3fc;
+      --ok: #86efac;
+      --warn: #fcd34d;
+      --bad: #fca5a5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 28px 16px 60px;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 34px; margin: 24px 0 16px; }
+    .card {
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 22px;
+      padding: 18px;
+      margin: 14px auto;
+      box-shadow: 0 12px 30px rgba(0,0,0,.22);
+    }
+    button {
+      padding: 14px 18px;
+      font-size: 16px;
+      border: 0;
+      border-radius: 14px;
+      cursor: pointer;
+      margin: 6px;
+      background: #f8fafc;
+      color: #0f172a;
+      min-width: 160px;
+    }
+    button.primary { background: var(--accent); color: #082f49; font-weight: 700; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    #result {
+      margin-top: 14px;
+      font-size: 38px;
+      font-weight: 800;
+      color: var(--accent);
+      word-break: break-word;
+    }
+    #status, #details {
+      color: var(--muted);
+      white-space: pre-line;
+      line-height: 1.45;
+      font-size: 16px;
+    }
+    .small { font-size: 13px; color: #94a3b8; line-height: 1.35; }
+    .barOuter { height: 10px; border-radius: 999px; background: rgba(255,255,255,.12); overflow: hidden; margin: 12px 0 4px; }
+    .barInner { height: 100%; width: 0%; background: var(--accent); transition: width .2s ease; }
+    .pill { display:inline-block; padding: 5px 9px; border-radius:999px; background: rgba(255,255,255,.08); color: var(--muted); margin: 4px; font-size: 13px; }
+    @media (max-width: 480px) {
+      h1 { font-size: 30px; }
+      button { width: 100%; margin: 6px 0; }
+      #result { font-size: 34px; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TOZ BGM Scanner</h1>
+  <div class="card">
+    <button id="buildBtn" class="primary" onclick="buildLibrary()">Build BGM Library</button>
+    <button id="listenBtn" onclick="startListening()">🎤 Start Listening</button>
+    <div class="barOuter"><div id="bar" class="barInner"></div></div>
+    <div id="status">Click “Build BGM Library” first.</div>
+  </div>
+  <div class="card">
+    <div class="small">Detected BGM</div>
+    <div id="result">Waiting...</div>
+    <div id="details"></div>
+  </div>
+  <div class="card small">
+    Best setup: PC speaker volume clear, DreamMS BGM high, sound effects low/off, phone 15–30cm from speaker, scan 10 seconds after the BGM has started.
+  </div>
+</div>
+
+<script>
+const bgmFiles = [
+  "Temple of Time.mp3", "Sleepywood.mp3", "Shanghai.mp3", "Showa.mp3",
+  "Rien.mp3", "Perion.mp3", "Orbis.mp3", "Omega Sector.mp3",
+  "New Leaf City.mp3", "Nautilus.mp3", "Mushroom Shrine.mp3", "Mu Lung.mp3",
+  "Magatia.mp3", "Ludibrium.mp3", "Lith Harbor.mp3", "Leafre.mp3",
+  "Korean Folk Town.mp3", "Kerning City.mp3", "Kampung Village.mp3", "Herb Town.mp3",
+  "Henesys.mp3", "Golden Temple.mp3", "Florina Beach.mp3", "Ereve.mp3",
+  "Ellinia.mp3", "Ellin Forest.mp3", "El Nath.mp3", "CBD.mp3",
+  "Boat Quay Town.mp3", "Ariant.mp3", "Aquarium.mp3", "Amoria.mp3"
+];
+
+// Shazam-style constellation fingerprinting, simplified for browser/GitHub Pages.
+const TARGET_RATE = 11025;
+const FFT_SIZE = 2048;
+const HOP = 512;
+const MIN_BIN = 8;
+const MAX_BIN = 360;
+const PEAKS_PER_FRAME = 7;
+const FAN_VALUE = 7;
+const MIN_DT = 1;
+const MAX_DT = 22;
+const RECORD_SECONDS = 10;
+
+let audioCtx;
+let songNames = [];
+let hashTable = new Map(); // hash => [{song, t}]
+let built = false;
+
+const $ = id => document.getElementById(id);
+function setStatus(t) { $("status").innerText = t; }
+function setResult(t) { $("result").innerText = t; }
+function setDetails(t) { $("details").innerHTML = t; }
+function setProgress(p) { $("bar").style.width = `${Math.max(0, Math.min(100, p))}%`; }
+function cleanName(file) { return file.replace(/\.mp3$/i, ""); }
+
+async function getAudioContext() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") await audioCtx.resume();
+  return audioCtx;
+}
+
+async function loadAudioFile(file) {
+  const ctx = await getAudioContext();
+  const url = "bgm/" + encodeURIComponent(file).replace(/%2F/g, "/");
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Cannot load ${file}. Check filename and bgm folder.`);
+  const arr = await res.arrayBuffer();
+  return await ctx.decodeAudioData(arr);
+}
+
+function toMono(buffer) {
+  const ch = buffer.numberOfChannels;
+  const len = buffer.length;
+  const out = new Float32Array(len);
+  for (let c = 0; c < ch; c++) {
+    const d = buffer.getChannelData(c);
+    for (let i = 0; i < len; i++) out[i] += d[i] / ch;
+  }
+  return { data: out, rate: buffer.sampleRate };
+}
+
+function resampleLinear(input, inRate, outRate) {
+  if (inRate === outRate) return input;
+  const ratio = inRate / outRate;
+  const outLen = Math.floor(input.length / ratio);
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const x = i * ratio;
+    const x0 = Math.floor(x);
+    const x1 = Math.min(x0 + 1, input.length - 1);
+    const frac = x - x0;
+    out[i] = input[x0] * (1 - frac) + input[x1] * frac;
+  }
+  return out;
+}
+
+function hann(n) {
+  const w = new Float32Array(n);
+  for (let i = 0; i < n; i++) w[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (n - 1)));
+  return w;
+}
+const WINDOW = hann(FFT_SIZE);
+
+function fftMagReal(frame) {
+  // Simple radix-2 FFT. Returns magnitudes for first half.
+  const n = frame.length;
+  const re = new Float32Array(n);
+  const im = new Float32Array(n);
+  re.set(frame);
+
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      let tr = re[i]; re[i] = re[j]; re[j] = tr;
+      let ti = im[i]; im[i] = im[j]; im[j] = ti;
+    }
+  }
+
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    const wlenR = Math.cos(ang);
+    const wlenI = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let wr = 1, wi = 0;
+      for (let j = 0; j < len / 2; j++) {
+        const uR = re[i+j], uI = im[i+j];
+        const vR = re[i+j+len/2] * wr - im[i+j+len/2] * wi;
+        const vI = re[i+j+len/2] * wi + im[i+j+len/2] * wr;
+        re[i+j] = uR + vR; im[i+j] = uI + vI;
+        re[i+j+len/2] = uR - vR; im[i+j+len/2] = uI - vI;
+        const nextR = wr * wlenR - wi * wlenI;
+        wi = wr * wlenI + wi * wlenR;
+        wr = nextR;
+      }
+    }
+  }
+
+  const mags = new Float32Array(n / 2);
+  for (let i = 0; i < mags.length; i++) mags[i] = Math.log1p(Math.hypot(re[i], im[i]));
+  return mags;
+}
+
+function extractPeaks(samples) {
+  const peaks = [];
+  const frame = new Float32Array(FFT_SIZE);
+  let t = 0;
+  for (let pos = 0; pos + FFT_SIZE <= samples.length; pos += HOP, t++) {
+    for (let i = 0; i < FFT_SIZE; i++) frame[i] = samples[pos+i] * WINDOW[i];
+    const mags = fftMagReal(frame);
+
+    const candidates = [];
+    for (let b = MIN_BIN + 2; b < Math.min(MAX_BIN, mags.length - 2); b++) {
+      const v = mags[b];
+      if (v > mags[b-1] && v > mags[b+1] && v > mags[b-2] && v > mags[b+2]) {
+        candidates.push({ t, f: b, v });
+      }
+    }
+    candidates.sort((a,b) => b.v - a.v);
+    peaks.push(...candidates.slice(0, PEAKS_PER_FRAME));
+  }
+  return peaks;
+}
+
+function makeHashes(peaks) {
+  peaks.sort((a,b) => a.t - b.t || a.f - b.f);
+  const hashes = [];
+  for (let i = 0; i < peaks.length; i++) {
+    let made = 0;
+    const p1 = peaks[i];
+    for (let j = i + 1; j < peaks.length && made < FAN_VALUE; j++) {
+      const p2 = peaks[j];
+      const dt = p2.t - p1.t;
+      if (dt < MIN_DT) continue;
+      if (dt > MAX_DT) break;
+      // Quantize frequency bins slightly to tolerate phone/speaker distortion.
+      const f1 = Math.round(p1.f / 3);
+      const f2 = Math.round(p2.f / 3);
+      hashes.push({ h: `${f1}|${f2}|${dt}`, t: p1.t });
+      made++;
+    }
+  }
+  return hashes;
+}
+
+async function fingerprintBuffer(buffer) {
+  const mono = toMono(buffer);
+  let data = resampleLinear(mono.data, mono.rate, TARGET_RATE);
+  // Remove DC and normalize.
+  let mean = 0;
+  for (let i = 0; i < data.length; i++) mean += data[i];
+  mean /= data.length || 1;
+  let max = 0;
+  for (let i = 0; i < data.length; i++) { data[i] -= mean; max = Math.max(max, Math.abs(data[i])); }
+  if (max > 0) for (let i = 0; i < data.length; i++) data[i] /= max;
+  const peaks = extractPeaks(data);
+  return makeHashes(peaks);
+}
+
+async function buildLibrary() {
+  $("buildBtn").disabled = true;
+  $("listenBtn").disabled = true;
+  hashTable = new Map();
+  songNames = [];
+  built = false;
+  setResult("Building...");
+  setDetails("");
+  setProgress(0);
+
+  try {
+    for (let i = 0; i < bgmFiles.length; i++) {
+      const file = bgmFiles[i];
+      const name = cleanName(file);
+      songNames.push(name);
+      setStatus(`Loading ${i + 1}/${bgmFiles.length}: ${file}`);
+      setProgress((i / bgmFiles.length) * 100);
+      const buffer = await loadAudioFile(file);
+      setStatus(`Fingerprinting ${i + 1}/${bgmFiles.length}: ${file}`);
+      const hashes = await fingerprintBuffer(buffer);
+      for (const x of hashes) {
+        if (!hashTable.has(x.h)) hashTable.set(x.h, []);
+        hashTable.get(x.h).push({ song: i, t: x.t });
+      }
+      await new Promise(r => setTimeout(r, 20));
+    }
+    built = true;
+    setProgress(100);
+    setResult("Ready");
+    setStatus(`Library ready. Loaded ${songNames.length} songs.\nNow click Start Listening.`);
+    setDetails(`<span class="pill">Fingerprint hashes: ${hashTable.size.toLocaleString()}</span>`);
+  } catch (e) {
+    console.error(e);
+    setResult("Error");
+    setStatus(e.message);
+  } finally {
+    $("buildBtn").disabled = false;
+    $("listenBtn").disabled = false;
+  }
+}
+
+function rankQuery(queryHashes) {
+  // votes[song][offset]++ where offset = libraryTime - queryTime.
+  const votes = new Map();
+  let matchedHashes = 0;
+
+  for (const q of queryHashes) {
+    const entries = hashTable.get(q.h);
+    if (!entries) continue;
+    matchedHashes++;
+    for (const e of entries) {
+      const key = e.song + ":" + (e.t - q.t);
+      votes.set(key, (votes.get(key) || 0) + 1);
+    }
+  }
+
+  const bySong = Array(songNames.length).fill(0).map((_, i) => ({ song: i, best: 0, total: 0, offset: 0 }));
+  for (const [key, count] of votes) {
+    const [s, off] = key.split(":").map(Number);
+    bySong[s].total += count;
+    if (count > bySong[s].best) {
+      bySong[s].best = count;
+      bySong[s].offset = off;
+    }
+  }
+
+  bySong.sort((a,b) => b.best - a.best || b.total - a.total);
+  const top = bySong[0];
+  const second = bySong[1] || { best: 0, total: 0 };
+  const confidence = Math.max(0, Math.min(99, Math.round(
+    (top.best * 2.2) + ((top.best - second.best) * 2.5) + Math.min(20, matchedHashes / 10)
+  )));
+  return { results: bySong, matchedHashes, confidence };
+}
+
+async function startListening() {
+  if (!built) {
+    setStatus("Please click Build BGM Library first.");
+    return;
+  }
+
+  $("listenBtn").disabled = true;
+  setResult("Scanning...");
+  setDetails("");
+  setProgress(0);
+  setStatus(`Listening for ${RECORD_SECONDS} seconds...`);
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+    recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    recorder.start();
+
+    let elapsed = 0;
+    const timer = setInterval(() => {
+      elapsed += 0.25;
+      setProgress((elapsed / RECORD_SECONDS) * 100);
+    }, 250);
+
+    setTimeout(() => recorder.stop(), RECORD_SECONDS * 1000);
+
+    recorder.onstop = async () => {
+      clearInterval(timer);
+      setProgress(100);
+      stream.getTracks().forEach(track => track.stop());
+      setStatus("Processing recording...");
+
+      const blob = new Blob(chunks, { type: chunks[0]?.type || "audio/webm" });
+      const arr = await blob.arrayBuffer();
+      const ctx = await getAudioContext();
+      const buffer = await ctx.decodeAudioData(arr);
+      const qHashes = await fingerprintBuffer(buffer);
+      const ranked = rankQuery(qHashes);
+      const top3 = ranked.results.slice(0, 3);
+      const best = top3[0];
+
+      setResult(songNames[best.song] || "No match");
+      setStatus(`Best match: ${songNames[best.song]}\nConfidence: ${ranked.confidence}%\nMatched hashes: ${ranked.matchedHashes}`);
+      setDetails(
+        `<div style="margin-top:12px">Top 3:</div>` +
+        top3.map((r, idx) =>
+          `<div class="pill">${idx + 1}. ${songNames[r.song]} — score ${r.best}, total ${r.total}</div>`
+        ).join("") +
+        `<div class="small" style="margin-top:12px">If confidence is below 45%, scan again with phone closer to speaker and DreamMS sound effects lowered.</div>`
+      );
+      $("listenBtn").disabled = false;
+    };
+  } catch (e) {
+    console.error(e);
+    setResult("Mic blocked");
+    setStatus("Microphone permission denied/blocked. Open the GitHub Pages HTTPS link in Safari/Chrome and allow microphone.");
+    $("listenBtn").disabled = false;
+  }
+}
+</script>
+</body>
+</html>
