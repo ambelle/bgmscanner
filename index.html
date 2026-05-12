@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TOZ BGM Scanner</title>
+
+  <style>
+    :root{
+      --bg:#07111f;
+      --bg2:#0f172a;
+      --card:rgba(15,23,42,.72);
+      --card2:rgba(17,24,39,.82);
+      --soft:rgba(148,163,184,.12);
+      --soft2:rgba(255,255,255,.07);
+      --text:#f8fafc;
+      --muted:#cbd5e1;
+      --muted2:#94a3b8;
+      --accent:#7dd3fc;
+      --accent2:#c4b5fd;
+      --good:#86efac;
+      --warn:#fde68a;
+      --danger:#fca5a5;
+      --shadow:0 24px 80px rgba(0,0,0,.42);
+    }
+
+    *{box-sizing:border-box}
+
+    body{
+      margin:0;
+      min-height:100vh;
+      color:var(--text);
+      font-family:Inter, "Plus Jakarta Sans", Arial, Helvetica, sans-serif;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+      overflow-x:hidden;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(125,211,252,.22), transparent 32%),
+        radial-gradient(circle at 80% 15%, rgba(196,181,253,.18), transparent 34%),
+        radial-gradient(circle at 50% 100%, rgba(134,239,172,.10), transparent 35%),
+        linear-gradient(160deg, #06101d 0%, #0f172a 52%, #101827 100%);
+    }
+
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background-image:
+        radial-gradient(circle, rgba(255,255,255,.18) 1px, transparent 1.2px),
+        radial-gradient(circle, rgba(125,211,252,.10) 1px, transparent 1.2px);
+      background-size:42px 42px, 78px 78px;
+      background-position:0 0, 20px 26px;
+      mask-image:linear-gradient(to bottom, rgba(0,0,0,.85), transparent 72%);
+      opacity:.35;
+      animation: floatStars 18s linear infinite;
+    }
+
+    @keyframes floatStars{
+      from{transform:translateY(0)}
+      to{transform:translateY(42px)}
+    }
+
+    .app{
+      position:relative;
+      width:100%;
+      max-width:540px;
+      background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.045));
+      border:1px solid rgba(255,255,255,.14);
+      border-radius:30px;
+      padding:24px;
+      text-align:center;
+      box-shadow:var(--shadow);
+      backdrop-filter:blur(20px);
+      -webkit-backdrop-filter:blur(20px);
+      overflow:hidden;
+    }
+
+    .app::before{
+      content:"";
+      position:absolute;
+      inset:-2px;
+      pointer-events:none;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(125,211,252,.20), transparent 35%),
+        linear-gradient(135deg, rgba(125,211,252,.14), transparent 38%, rgba(196,181,253,.14));
+      opacity:.9;
+      z-index:0;
+    }
+
+    .app > *{
+      position:relative;
+      z-index:1;
+    }
+
+    .brand{
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      gap:10px;
+      margin-bottom:8px;
+    }
+
+    .spark{
+      width:34px;
+      height:34px;
+      border-radius:14px;
+      background:linear-gradient(135deg, rgba(125,211,252,.95), rgba(196,181,253,.90));
+      display:grid;
+      place-items:center;
+      box-shadow:0 0 24px rgba(125,211,252,.35);
+      color:#07111f;
+      font-weight:900;
+    }
+
+    h1{
+      margin:0;
+      font-size:29px;
+      letter-spacing:.2px;
+      line-height:1.1;
+    }
+
+    .sub{
+      color:var(--muted);
+      font-size:14px;
+      margin:8px auto 18px;
+      line-height:1.45;
+      max-width:420px;
+    }
+
+    .orb-wrap{
+      display:flex;
+      justify-content:center;
+      margin:18px 0 18px;
+    }
+
+    .orb{
+      width:132px;
+      height:132px;
+      border-radius:999px;
+      position:relative;
+      display:grid;
+      place-items:center;
+      background:
+        radial-gradient(circle at 35% 30%, rgba(255,255,255,.95), rgba(125,211,252,.75) 20%, rgba(196,181,253,.52) 48%, rgba(15,23,42,.85) 76%);
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.18) inset,
+        0 0 34px rgba(125,211,252,.28),
+        0 0 70px rgba(196,181,253,.18);
+      transition:transform .25s ease, box-shadow .25s ease;
+    }
+
+    .orb::before,
+    .orb::after{
+      content:"";
+      position:absolute;
+      inset:-12px;
+      border-radius:inherit;
+      border:1px solid rgba(125,211,252,.24);
+      opacity:.45;
+      animation:pulseRing 2.4s ease-out infinite;
+    }
+
+    .orb::after{
+      inset:-24px;
+      border-color:rgba(196,181,253,.18);
+      animation-delay:.65s;
+    }
+
+    .orb-core{
+      width:58px;
+      height:58px;
+      border-radius:22px;
+      background:rgba(7,17,31,.68);
+      display:grid;
+      place-items:center;
+      color:var(--accent);
+      font-size:25px;
+      border:1px solid rgba(255,255,255,.18);
+      box-shadow:0 8px 26px rgba(0,0,0,.22);
+    }
+
+    .orb.listening{
+      animation:orbListen 1.1s ease-in-out infinite alternate;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.20) inset,
+        0 0 42px rgba(125,211,252,.46),
+        0 0 90px rgba(196,181,253,.28);
+    }
+
+    .orb.matching{
+      animation:orbSpin 1.7s linear infinite;
+      filter:saturate(1.2);
+    }
+
+    .orb.ready{
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,.18) inset,
+        0 0 34px rgba(134,239,172,.24),
+        0 0 70px rgba(125,211,252,.16);
+    }
+
+    @keyframes pulseRing{
+      0%{transform:scale(.86); opacity:.45}
+      75%{transform:scale(1.12); opacity:.08}
+      100%{transform:scale(1.18); opacity:0}
+    }
+
+    @keyframes orbListen{
+      from{transform:scale(.98)}
+      to{transform:scale(1.035)}
+    }
+
+    @keyframes orbSpin{
+      from{transform:rotate(0deg)}
+      to{transform:rotate(360deg)}
+    }
+
+    .button-grid{
+      display:grid;
+      gap:10px;
+      margin-top:8px;
+    }
+
+    button{
+      width:100%;
+      border:0;
+      border-radius:18px;
+      padding:15px 18px;
+      font-size:16px;
+      font-weight:800;
+      cursor:pointer;
+      margin:0;
+      color:#06101d;
+      background:linear-gradient(135deg, #7dd3fc, #c4b5fd);
+      box-shadow:0 12px 30px rgba(125,211,252,.18);
+      transition:transform .18s ease, filter .18s ease, opacity .18s ease;
+    }
+
+    button:active{
+      transform:scale(.985);
+    }
+
+    button:hover{
+      filter:brightness(1.04);
+    }
+
+    button.secondary{
+      background:rgba(255,255,255,.10);
+      color:var(--muted);
+      border:1px solid rgba(255,255,255,.12);
+      box-shadow:none;
+    }
+
+    button.ghost{
+      background:rgba(148,163,184,.10);
+      color:var(--muted);
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow:none;
+      font-size:14px;
+      padding:12px 14px;
+    }
+
+    button:disabled{
+      opacity:.52;
+      cursor:not-allowed;
+      transform:none;
+      filter:none;
+    }
+
+    .mini-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+
+    #result{
+      margin-top:18px;
+      font-size:34px;
+      font-weight:900;
+      color:var(--accent);
+      word-break:break-word;
+      min-height:44px;
+      letter-spacing:-.5px;
+      text-shadow:0 0 22px rgba(125,211,252,.20);
+    }
+
+    #status{
+      margin-top:12px;
+      white-space:pre-line;
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.48;
+    }
+
+    .pill-row{
+      display:flex;
+      gap:8px;
+      justify-content:center;
+      flex-wrap:wrap;
+      margin-top:12px;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:7px 12px;
+      border-radius:999px;
+      background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.10);
+      color:var(--muted);
+      font-size:12.5px;
+    }
+
+    .confidence-card{
+      margin-top:16px;
+      padding:14px;
+      border-radius:20px;
+      background:rgba(255,255,255,.055);
+      border:1px solid rgba(255,255,255,.10);
+      text-align:left;
+    }
+
+    .confidence-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      color:var(--muted);
+      font-size:13px;
+      margin-bottom:9px;
+    }
+
+    .bar{
+      height:10px;
+      border-radius:999px;
+      overflow:hidden;
+      background:rgba(148,163,184,.18);
+    }
+
+    .bar-fill{
+      height:100%;
+      width:0%;
+      border-radius:inherit;
+      background:linear-gradient(90deg, var(--accent), var(--good));
+      box-shadow:0 0 20px rgba(125,211,252,.32);
+      transition:width .35s ease;
+    }
+
+    .top-card{
+      margin-top:14px;
+      display:grid;
+      gap:8px;
+      text-align:left;
+    }
+
+    .match-row{
+      padding:10px 12px;
+      border-radius:16px;
+      background:rgba(255,255,255,.055);
+      border:1px solid rgba(255,255,255,.09);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+
+    .match-title{
+      font-weight:800;
+      color:var(--text);
+      font-size:14px;
+    }
+
+    .match-meta{
+      color:var(--muted2);
+      font-size:12px;
+      margin-top:2px;
+    }
+
+    .rank{
+      min-width:28px;
+      height:28px;
+      border-radius:11px;
+      display:grid;
+      place-items:center;
+      background:rgba(125,211,252,.14);
+      color:var(--accent);
+      font-weight:900;
+      font-size:12px;
+    }
+
+    .tips{
+      margin-top:16px;
+      padding:14px;
+      border-radius:18px;
+      background:rgba(255,255,255,.045);
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.45;
+      text-align:left;
+      border:1px solid rgba(255,255,255,.08);
+    }
+
+    .tips b{
+      color:var(--text);
+    }
+
+    .wave{
+      height:28px;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      gap:4px;
+      margin:6px 0 0;
+      opacity:.9;
+    }
+
+    .wave span{
+      width:4px;
+      height:8px;
+      border-radius:999px;
+      background:linear-gradient(to top, var(--accent), var(--accent2));
+      animation:wave 1.1s ease-in-out infinite;
+    }
+
+    .wave span:nth-child(2){animation-delay:.08s}
+    .wave span:nth-child(3){animation-delay:.16s}
+    .wave span:nth-child(4){animation-delay:.24s}
+    .wave span:nth-child(5){animation-delay:.32s}
+    .wave span:nth-child(6){animation-delay:.40s}
+    .wave span:nth-child(7){animation-delay:.48s}
+
+    @keyframes wave{
+      0%,100%{height:7px; opacity:.45}
+      50%{height:25px; opacity:1}
+    }
+
+    @media (max-width:430px){
+      body{padding:14px}
+      .app{padding:20px; border-radius:26px}
+      h1{font-size:25px}
+      #result{font-size:30px}
+      .orb{width:118px; height:118px}
+      .mini-grid{grid-template-columns:1fr}
+    }
+  </style>
+
+</head>
+<body>
+  <main class="app">
+    <div class="brand">
+      <div class="spark">♪</div>
+      <h1>TOZ BGM Scanner</h1>
+    </div>
+
+    <div class="sub">Improved 1.5-second scan • cached BGM library • ultra matching engine mode</div>
+
+    <div class="orb-wrap">
+      <div class="orb" id="scanOrb">
+        <div class="orb-core" id="orbIcon">🎧</div>
+      </div>
+    </div>
+
+    <div class="wave" id="wave" style="display:none">
+      <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+    </div>
+
+    <div class="button-grid">
+      <button id="scanBtn" onclick="startListening()" disabled>🎤 Start 1.5s Scan</button>
+      <button id="buildBtn" class="secondary" onclick="buildLibrary()">Build / Load BGM Library</button>
+      <div class="mini-grid">
+        <button class="ghost" onclick="clearCache()">Clear Cache</button>
+        <button class="ghost" onclick="copyResult()">Copy Result</button>
+      </div>
+    </div>
+
+    <div class="pill-row">
+      <div class="pill" id="loadedCount">Library not loaded</div>
+      <div class="pill" id="statePill">Idle</div>
+    </div>
+
+    <div id="result">Waiting...</div>
+
+    <div class="confidence-card">
+      <div class="confidence-head">
+        <span>Confidence</span>
+        <strong id="confidenceText">0%</strong>
+      </div>
+      <div class="bar"><div class="bar-fill" id="confidenceFill"></div></div>
+    </div>
+
+    <div class="top-card" id="topCards"></div>
+
+    <div id="status">Tap “Build / Load BGM Library” first.</div>
+
+    <div class="tips">
+      <b>Best accuracy:</b> put phone near speaker, lower SFX/Discord, and scan after the BGM has clearly started. If result says unsure, scan once more.
+    </div>
+  </main>
+
+<script>
+/*
+  TOZ BGM Scanner - improved 1.5s accuracy version
+  Scan time: 1.5 seconds
+  Matching: Shazam-style spectral landmark hashes
+  Cache: localStorage fingerprint cache, so repeated loads are faster
+*/
+
+const SCAN_SECONDS = 1.5;
+const FFT_SIZE = 2048;
+const HOP_SIZE = 1024;
+const SAMPLE_RATE_TARGET = 11025;
+const MAX_LIBRARY_SECONDS = 95; // enough for BGM loops, keeps build faster
+const CACHE_KEY = "toz_bgm_fingerprints_v4_1_5s_improved";
+
+const bgmFiles = [
+  "Temple of Time.mp3",
+  "Sleepywood.mp3",
+  "Shanghai.mp3",
+  "Showa.mp3",
+  "Rien.mp3",
+  "Perion.mp3",
+  "Orbis.mp3",
+  "Omega Sector.mp3",
+  "New Leaf City.mp3",
+  "Nautilus.mp3",
+  "Mushroom Shrine.mp3",
+  "Mu Lung.mp3",
+  "Magatia.mp3",
+  "Ludibrium.mp3",
+  "Lith Harbor.mp3",
+  "Leafre.mp3",
+  "Korean Folk Town.mp3",
+  "Kerning City.mp3",
+  "Kampung Village.mp3",
+  "Herb Town.mp3",
+  "Henesys.mp3",
+  "Golden Temple.mp3",
+  "Florina Beach.mp3",
+  "Ereve.mp3",
+  "Ellinia.mp3",
+  "Ellin Forest.mp3",
+  "El Nath.mp3",
+  "CBD.mp3",
+  "Boat Quay Town.mp3",
+  "Ariant.mp3",
+  "Aquarium.mp3",
+  "Amoria.mp3"
+];
+
+let audioCtx = null;
+let library = [];
+let libraryReady = false;
+
+const buildBtn = document.getElementById("buildBtn");
+const scanBtn = document.getElementById("scanBtn");
+
+function setStatus(t){ document.getElementById("status").innerText = t; }
+function setResult(t){ document.getElementById("result").innerText = t; }
+function setCount(t){ document.getElementById("loadedCount").innerText = t; }
+
+function setState(state){
+  const orb = document.getElementById("scanOrb");
+  const icon = document.getElementById("orbIcon");
+  const pill = document.getElementById("statePill");
+  const wave = document.getElementById("wave");
+
+  if(!orb || !icon || !pill) return;
+
+  orb.classList.remove("ready","listening","matching");
+  if(wave) wave.style.display = "none";
+
+  if(state === "ready"){
+    orb.classList.add("ready");
+    icon.innerText = "✓";
+    pill.innerText = "Ready";
+  }else if(state === "listening"){
+    orb.classList.add("listening");
+    icon.innerText = "🎤";
+    pill.innerText = "Listening";
+    if(wave) wave.style.display = "flex";
+  }else if(state === "matching"){
+    orb.classList.add("matching");
+    icon.innerText = "⌁";
+    pill.innerText = "Matching";
+    if(wave) wave.style.display = "flex";
+  }else if(state === "error"){
+    icon.innerText = "!";
+    pill.innerText = "Check";
+  }else{
+    icon.innerText = "🎧";
+    pill.innerText = "Idle";
+  }
+}
+
+function setConfidence(value){
+  const pct = Math.max(0, Math.min(99, Math.round(value || 0)));
+  const fill = document.getElementById("confidenceFill");
+  const text = document.getElementById("confidenceText");
+  if(fill) fill.style.width = pct + "%";
+  if(text) text.innerText = pct + "%";
+}
+
+function renderTopCards(scored){
+  const el = document.getElementById("topCards");
+  if(!el) return;
+  if(!scored || scored.length === 0){
+    el.innerHTML = "";
+    return;
+  }
+
+  el.innerHTML = scored.slice(0,3).map((r,idx) => `
+    <div class="match-row">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="rank">#${idx+1}</div>
+        <div>
+          <div class="match-title">${r.name}</div>
+          <div class="match-meta">strength ${Math.round(r.best || 0)}</div>
+        </div>
+      </div>
+      <div class="match-meta">${idx === 0 ? "Best" : "Alt"}</div>
+    </div>
+  `).join("");
+}
+
+async function copyResult(){
+  const text = document.getElementById("result").innerText.trim();
+  if(!text || text === "Waiting..." || text === "Listening..." || text === "Matching...") return;
+  try{
+    await navigator.clipboard.writeText(text.replace(/^Unsure:\s*/,""));
+    setStatus("Copied result: " + text.replace(/^Unsure:\s*/,""));
+  }catch(e){
+    setStatus("Could not copy automatically. Long-press result to copy.");
+  }
+}
+
+async function getAudioContext(){
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if(audioCtx.state === "suspended") await audioCtx.resume();
+  return audioCtx;
+}
+
+function stripName(file){
+  return file.replace(/\.[^/.]+$/, "");
+}
+
+async function loadAudioFile(file){
+  const ctx = await getAudioContext();
+  const url = "bgm/" + encodeURIComponent(file);
+  const res = await fetch(url, { cache: "force-cache" });
+  if(!res.ok) throw new Error("Cannot load " + file);
+  const arr = await res.arrayBuffer();
+  return await ctx.decodeAudioData(arr);
+}
+
+function getMono(buffer, maxSeconds = null){
+  const sr = buffer.sampleRate;
+  const len = maxSeconds ? Math.min(buffer.length, Math.floor(maxSeconds * sr)) : buffer.length;
+  const ch0 = buffer.getChannelData(0);
+  const out = new Float32Array(len);
+  if(buffer.numberOfChannels === 1){
+    for(let i=0;i<len;i++) out[i]=ch0[i];
+  }else{
+    const ch1 = buffer.getChannelData(1);
+    for(let i=0;i<len;i++) out[i]=(ch0[i]+ch1[i])*0.5;
+  }
+  return { data: out, sampleRate: sr };
+}
+
+function resampleToTarget(input, fromRate, targetRate){
+  if(fromRate === targetRate) return input;
+  const ratio = fromRate / targetRate;
+  const newLen = Math.floor(input.length / ratio);
+  const out = new Float32Array(newLen);
+  for(let i=0;i<newLen;i++){
+    const pos = i * ratio;
+    const i0 = Math.floor(pos);
+    const i1 = Math.min(i0 + 1, input.length - 1);
+    const frac = pos - i0;
+    out[i] = input[i0] * (1 - frac) + input[i1] * frac;
+  }
+  return out;
+}
+
+function hanning(n){
+  const w = new Float32Array(n);
+  for(let i=0;i<n;i++) w[i] = 0.5 * (1 - Math.cos((2*Math.PI*i)/(n-1)));
+  return w;
+}
+
+const WINDOW = hanning(FFT_SIZE);
+
+function fftRadix2(re, im){
+  const n = re.length;
+  let j = 0;
+  for(let i=1;i<n;i++){
+    let bit = n >> 1;
+    while(j & bit){ j ^= bit; bit >>= 1; }
+    j ^= bit;
+    if(i < j){
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
+    }
+  }
+  for(let len=2; len<=n; len<<=1){
+    const ang = -2 * Math.PI / len;
+    const wlenR = Math.cos(ang), wlenI = Math.sin(ang);
+    for(let i=0;i<n;i+=len){
+      let wr=1, wi=0;
+      for(let k=0;k<len/2;k++){
+        const uR = re[i+k], uI = im[i+k];
+        const vR = re[i+k+len/2]*wr - im[i+k+len/2]*wi;
+        const vI = re[i+k+len/2]*wi + im[i+k+len/2]*wr;
+        re[i+k] = uR + vR;
+        im[i+k] = uI + vI;
+        re[i+k+len/2] = uR - vR;
+        im[i+k+len/2] = uI - vI;
+        const nextWr = wr*wlenR - wi*wlenI;
+        wi = wr*wlenI + wi*wlenR;
+        wr = nextWr;
+      }
+    }
+  }
+}
+
+function spectrum(frame){
+  const re = new Float32Array(FFT_SIZE);
+  const im = new Float32Array(FFT_SIZE);
+  for(let i=0;i<FFT_SIZE;i++) re[i] = (frame[i] || 0) * WINDOW[i];
+  fftRadix2(re, im);
+  const mags = new Float32Array(FFT_SIZE/2);
+  for(let i=0;i<mags.length;i++){
+    mags[i] = Math.sqrt(re[i]*re[i] + im[i]*im[i]);
+  }
+  return mags;
+}
+
+const BANDS = [
+  // Avoid ultra-low bass rumble. Use more mid/high detail for short 1.5s clips.
+  [10, 18], [19, 29], [30, 43], [44, 62], [63, 88],
+  [89, 124], [125, 174], [175, 244], [245, 342], [343, 480],
+  [481, 620], [621, 760]
+];
+
+function peaksForFrame(mags){
+  // Pick strongest bin per band, but also store its relative strength.
+  // Relative strength helps ignore noisy mic/speaker frequencies.
+  const peaks = [];
+  let globalSum = 0;
+  for(let i=0;i<mags.length;i++) globalSum += mags[i];
+  const globalAvg = globalSum / Math.max(1, mags.length);
+
+  for(let b=0;b<BANDS.length;b++){
+    const [start,end] = BANDS[b];
+    let bestBin = start;
+    let bestMag = 0;
+    let sum = 0;
+    let count = 0;
+
+    for(let i=start;i<=end && i<mags.length;i++){
+      const v = mags[i];
+      sum += v;
+      count++;
+      if(v > bestMag){
+        bestMag = v;
+        bestBin = i;
+      }
+    }
+
+    const bandAvg = sum / Math.max(1, count);
+    const strength = bestMag / Math.max(1e-9, bandAvg + globalAvg * 0.25);
+    peaks.push({ bin: bestBin, strength });
+  }
+  return peaks;
+}
+
+function makeFingerprints(floatData, sourceName){
+  // Normalize volume
+  let max = 0;
+  for(let i=0;i<floatData.length;i++) max = Math.max(max, Math.abs(floatData[i]));
+  if(max > 0){
+    for(let i=0;i<floatData.length;i++) floatData[i] = floatData[i] / max;
+  }
+
+  const frameCount = Math.max(0, Math.floor((floatData.length - FFT_SIZE) / HOP_SIZE));
+  const framePeaks = [];
+
+  for(let f=0; f<frameCount; f++){
+    const start = f * HOP_SIZE;
+    const frame = floatData.subarray(start, start + FFT_SIZE);
+    const mags = spectrum(frame);
+    framePeaks.push(peaksForFrame(mags));
+  }
+
+  const hashes = [];
+  const fanout = 5;
+
+  for(let t=0; t<framePeaks.length - fanout; t++){
+    const anchor = framePeaks[t];
+
+    // Choose the best 6 bands in this frame. This makes 1.5s scans more information-rich.
+    const ranked = anchor
+      .map((p, band) => ({ band, bin: p.bin, strength: p.strength }))
+      .filter(p => p.band >= 1 && p.band <= 11 && p.strength >= 1.12)
+      .sort((a,b) => b.strength - a.strength)
+      .slice(0, 6);
+
+    for(const a of ranked){
+      const f1 = Math.round(a.bin / 2);
+
+      for(let dt=1; dt<=fanout; dt++){
+        const target = framePeaks[t+dt];
+        if(!target) continue;
+
+        // Pair with neighboring and same-ish bands to capture melody movement.
+        const candidateBands = [
+          a.band,
+          Math.min(target.length - 1, a.band + 1),
+          Math.max(0, a.band - 1)
+        ];
+
+        for(const b2 of candidateBands){
+          const tp = target[b2];
+          if(!tp || tp.strength < 1.08) continue;
+
+          const f2 = Math.round(tp.bin / 2);
+          const strengthBucket = Math.min(5, Math.floor((a.strength + tp.strength) / 1.2));
+
+          // Two hash styles:
+          // 1) precise-ish pair hash
+          hashes.push([`${f1}|${f2}|${dt}|${a.band}|${b2}`, t, strengthBucket]);
+
+          // 2) coarser pair hash, more tolerant to phone speaker/mic distortion
+          hashes.push([`${Math.round(f1/2)}~${Math.round(f2/2)}~${dt}~${a.band}`, t, Math.max(1, strengthBucket - 1)]);
+        }
+      }
+    }
+  }
+
+  return hashes;
+}
+
+function buildIndexFromHashes(hashes){
+  const index = {};
+  for(const item of hashes){
+    const hash = item[0];
+    const t = item[1];
+    const weight = item[2] || 1;
+
+    if(!index[hash]) index[hash] = [];
+    // cap per hash to avoid common/noisy hashes dominating
+    if(index[hash].length < 120) index[hash].push([t, weight]);
+  }
+  return index;
+}
+
+function scoreSampleAgainstSong(sampleHashes, songIndex){
+  const offsets = new Map();
+  let matched = 0;
+  let weightedMatched = 0;
+
+  for(const item of sampleHashes){
+    const hash = item[0];
+    const sampleT = item[1];
+    const sampleWeight = item[2] || 1;
+
+    const times = songIndex[hash];
+    if(!times) continue;
+
+    matched++;
+    weightedMatched += sampleWeight;
+
+    for(const entry of times){
+      const songT = Array.isArray(entry) ? entry[0] : entry;
+      const songWeight = Array.isArray(entry) ? (entry[1] || 1) : 1;
+      const offset = songT - sampleT;
+
+      // Weighted score. Stronger spectral peaks matter more.
+      const add = sampleWeight + songWeight;
+      offsets.set(offset, (offsets.get(offset) || 0) + add);
+    }
+  }
+
+  let best = 0;
+  let bestOffset = 0;
+
+  // Cluster nearby offsets together. Short phone recordings can shift slightly.
+  for(const [offset, score] of offsets.entries()){
+    const cluster =
+      score +
+      (offsets.get(offset - 1) || 0) * 0.65 +
+      (offsets.get(offset + 1) || 0) * 0.65 +
+      (offsets.get(offset - 2) || 0) * 0.35 +
+      (offsets.get(offset + 2) || 0) * 0.35;
+
+    if(cluster > best){
+      best = cluster;
+      bestOffset = offset;
+    }
+  }
+
+  return {
+    best,
+    bestOffset,
+    matched,
+    weightedMatched,
+    confidence: sampleHashes.length ? best / Math.max(18, sampleHashes.length * 0.22) : 0
+  };
+}
+
+function compressLibrary(lib){
+  return lib.map(song => ({
+    name: song.name,
+    index: song.index
+  }));
+}
+
+function tryLoadCache(){
+  try{
+    const raw = localStorage.getItem(CACHE_KEY);
+    if(!raw) return false;
+    const parsed = JSON.parse(raw);
+    if(!parsed || parsed.version !== 4 || !Array.isArray(parsed.library)) return false;
+
+    const cachedNames = parsed.files || [];
+    if(JSON.stringify(cachedNames) !== JSON.stringify(bgmFiles)) return false;
+
+    library = parsed.library;
+    libraryReady = true;
+    scanBtn.disabled = false;
+    setCount(`Loaded ${library.length} cached BGMs`);
+    setResult("Ready");
+    setConfidence(100);
+    setState("ready");
+    setStatus("Cached library loaded.\nYou can scan immediately.");
+    return true;
+  }catch(e){
+    console.warn("Cache load failed", e);
+    return false;
+  }
+}
+
+function saveCache(){
+  try{
+    const payload = {
+      version: 4,
+      files: bgmFiles,
+      library: compressLibrary(library),
+      savedAt: Date.now()
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+  }catch(e){
+    console.warn("Cache save failed. This is okay.", e);
+  }
+}
+
+function clearCache(){
+  localStorage.removeItem(CACHE_KEY);
+  library = [];
+  libraryReady = false;
+  scanBtn.disabled = true;
+  setCount("Cache cleared");
+  setResult("Waiting...");
+  setConfidence(0);
+  renderTopCards([]);
+  setState("idle");
+  setStatus("Cache cleared. Tap Build / Load BGM Library again.");
+}
+
+async function buildLibrary(){
+  buildBtn.disabled = true;
+  scanBtn.disabled = true;
+  setResult("Loading...");
+  setConfidence(0);
+  renderTopCards([]);
+  setState("matching");
+  setStatus("Checking cache...");
+
+  if(tryLoadCache()){
+    buildBtn.disabled = false;
+    return;
+  }
+
+  library = [];
+  setStatus("No cache found or old cache detected.\nBuilding improved fingerprints once. First build may take longer.");
+  setCount("Building library...");
+
+  try{
+    for(let i=0;i<bgmFiles.length;i++){
+      const file = bgmFiles[i];
+      setStatus(`Building ${i+1}/${bgmFiles.length}:\n${file}`);
+
+      const buffer = await loadAudioFile(file);
+      const mono = getMono(buffer, MAX_LIBRARY_SECONDS);
+      const data = resampleToTarget(mono.data, mono.sampleRate, SAMPLE_RATE_TARGET);
+      const hashes = makeFingerprints(data, stripName(file));
+      const index = buildIndexFromHashes(hashes);
+
+      library.push({
+        name: stripName(file),
+        index
+      });
+
+      setCount(`Loaded ${i+1}/${bgmFiles.length}`);
+      await new Promise(r => setTimeout(r, 20)); // keep phone UI responsive
+    }
+
+    libraryReady = true;
+    scanBtn.disabled = false;
+    saveCache();
+
+    setResult("Ready");
+    setConfidence(100);
+    setState("ready");
+    setCount(`Loaded ${library.length} BGMs`);
+    setStatus("Library ready.\nNext time should load faster from cache.\nTap Start 1.5s Scan.");
+  }catch(e){
+    console.error(e);
+    setResult("Error");
+    setState("error");
+    setStatus(`Failed to build library:\n${e.message}\n\nCheck file spelling and that MP3s are inside /bgm.`);
+  }finally{
+    buildBtn.disabled = false;
+  }
+}
+
+async function startListening(){
+  if(!libraryReady || library.length === 0){
+    setStatus("Please Build / Load BGM Library first.");
+    return;
+  }
+
+  setResult("Listening...");
+  setConfidence(0);
+  renderTopCards([]);
+  setState("listening");
+  setStatus(`Listening for ${SCAN_SECONDS} seconds...`);
+  scanBtn.disabled = true;
+
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
+
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+
+    recorder.ondataavailable = e => {
+      if(e.data && e.data.size > 0) chunks.push(e.data);
+    };
+
+    recorder.start();
+
+    setTimeout(() => {
+      if(recorder.state !== "inactive") recorder.stop();
+    }, Math.round(SCAN_SECONDS * 1000));
+
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+
+      setResult("Matching...");
+      setState("matching");
+      setStatus("Processing 1.5s sample...");
+
+      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      const arr = await blob.arrayBuffer();
+      const ctx = await getAudioContext();
+      const buffer = await ctx.decodeAudioData(arr);
+
+      const mono = getMono(buffer, SCAN_SECONDS);
+      const data = resampleToTarget(mono.data, mono.sampleRate, SAMPLE_RATE_TARGET);
+      const sampleHashes = makeFingerprints(data, "sample");
+
+      const scored = library.map(song => {
+        const s = scoreSampleAgainstSong(sampleHashes, song.index);
+        return {
+          name: song.name,
+          best: s.best,
+          matched: s.matched,
+          confidence: s.confidence
+        };
+      }).sort((a,b) => b.best - a.best || b.matched - a.matched);
+
+      const best = scored[0];
+      const second = scored[1];
+      const gap = second ? best.best - second.best : best.best;
+      const ratio = second && second.best > 0 ? best.best / second.best : 99;
+      const confidenceText = Math.min(99, Math.round(Math.max(0, best.confidence) * 100));
+
+      const unsure = (
+        best.best < 18 ||
+        (second && ratio < 1.13 && gap < 8)
+      );
+
+      setResult(unsure ? `Unsure: ${best.name}` : best.name);
+      setConfidence(confidenceText);
+      renderTopCards(scored);
+      setState(unsure ? "error" : "ready");
+
+      setStatus(
+        `Best match: ${best.name}\n` +
+        `Confidence: ${confidenceText}%\n` +
+        `Detection strength: ${Math.round(best.best)}\n` +
+        `Gap vs 2nd: ${Math.round(gap)}\n` +
+        `Ratio vs 2nd: ${ratio === 99 ? "N/A" : ratio.toFixed(2)}x\n` +
+        (unsure ? `\n⚠️ Detection confidence is close. Re-scan for strongest accuracy.\n` : `\n`) +
+        `Top 5:\n` +
+        scored.slice(0,5).map((r,idx) =>
+          `${idx+1}. ${r.name} — strength ${Math.round(r.best)}`
+        ).join("\n")
+      );
+
+      scanBtn.disabled = false;
+    };
+
+  }catch(e){
+    console.error(e);
+    setResult("Mic blocked");
+    setState("error");
+    setStatus("Microphone permission denied or blocked.\nOpen from GitHub Pages HTTPS and allow microphone.");
+    scanBtn.disabled = false;
+  }
+}
+
+// Auto-load cache when page opens, but user can still manually build.
+window.addEventListener("load", () => {
+  if(tryLoadCache()){
+    // already ready
+  }
+});
+</script>
+</body>
+</html>
