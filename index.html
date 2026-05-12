@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>TOZ BGM Scanner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { background:#111827; color:white; font-family:Arial,sans-serif; text-align:center; padding:28px 16px; }
+    h1 { font-size:32px; margin-top:40px; }
+    button { padding:14px 20px; font-size:16px; border:0; border-radius:12px; cursor:pointer; margin:8px; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    #result { margin-top:24px; font-size:34px; font-weight:bold; color:#7dd3fc; word-break:break-word; }
+    #status { margin-top:18px; color:#cbd5e1; white-space:pre-line; line-height:1.35; font-size:18px; }
+    .small { margin-top:24px; color:#94a3b8; font-size:14px; line-height:1.4; }
+  </style>
+</head>
+<body>
+  <h1>TOZ BGM Scanner</h1>
+  <button id="buildBtn" onclick="buildLibrary()">Build BGM Library</button>
+  <button id="listenBtn" onclick="startListening()">🎤 Start Listening</button>
+  <div id="status">Click “Build BGM Library” first.</div>
+  <div id="result">Waiting...</div>
+  <div class="small">Tip: put phone near speaker, lower skill sound / Discord, and scan 8 seconds of clear BGM.</div>
+
+<script>
+const bgmFiles = [
+  "Temple of Time.mp3","Sleepywood.mp3","Shanghai.mp3","Showa.mp3","Rien.mp3","Perion.mp3","Orbis.mp3",
+  "Omega Sector.mp3","New Leaf City.mp3","Nautilus.mp3","Mushroom Shrine.mp3","Mu Lung.mp3","Magatia.mp3",
+  "Ludibrium.mp3","Lith Harbor.mp3","Leafre.mp3","Korean Folk Town.mp3","Kerning City.mp3","Kampung Village.mp3",
+  "Herb Town.mp3","Henesys.mp3","Golden Temple.mp3","Florina Beach.mp3","Ereve.mp3","Ellinia.mp3","Ellin Forest.mp3",
+  "El Nath.mp3","CBD.mp3","Boat Quay Town.mp3","Ariant.mp3","Aquarium.mp3","Amoria.mp3"
+];
+
+let audioCtx;
+let library = [];
+const TARGET_RATE = 11025;
+const FFT_SIZE = 2048;
+const HOP_SIZE = 2756;
+const BANDS = [[80,160],[160,250],[250,400],[400,630],[630,900],[900,1250],[1250,1700],[1700,2300],[2300,3000],[3000,3800],[3800,4800],[4800,5400]];
+
+function setStatus(t){document.getElementById("status").innerText=t;}
+function setResult(t){document.getElementById("result").innerText=t;}
+function setBusy(x){document.getElementById("buildBtn").disabled=x;document.getElementById("listenBtn").disabled=x;}
+
+async function getAudioContext(){
+  if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if(audioCtx.state === "suspended") await audioCtx.resume();
+  return audioCtx;
+}
+
+async function loadAudioFile(file){
+  const ctx = await getAudioContext();
+  const res = await fetch("bgm/" + encodeURIComponent(file));
+  if(!res.ok) throw new Error("Cannot load " + file);
+  const arr = await res.arrayBuffer();
+  return await ctx.decodeAudioData(arr);
+}
+
+function toMonoDownsample(buffer){
+  const srcRate = buffer.sampleRate;
+  const ch0 = buffer.getChannelData(0);
+  const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+  const ratio = srcRate / TARGET_RATE;
+  const outLen = Math.floor(buffer.length / ratio);
+  const out = new Float32Array(outLen);
+  for(let i=0;i<outLen;i++){
+    const idx = Math.floor(i * ratio);
+    out[i] = ch1 ? (ch0[idx] + ch1[idx]) * .5 : ch0[idx];
+  }
+  return out;
+}
+
+function makeHann(n){
+  const w = new Float32Array(n);
+  for(let i=0;i<n;i++) w[i] = .5 * (1 - Math.cos(2 * Math.PI * i / (n - 1)));
+  return w;
+}
+const hann = makeHann(FFT_SIZE);
+
+function fftRadix2(re, im){
+  const n = re.length;
+  let j = 0;
+  for(let i=1;i<n;i++){
+    let bit = n >> 1;
+    while(j & bit){ j ^= bit; bit >>= 1; }
+    j ^= bit;
+    if(i < j){
+      let tr = re[i]; re[i] = re[j]; re[j] = tr;
+      let ti = im[i]; im[i] = im[j]; im[j] = ti;
+    }
+  }
+  for(let len=2; len<=n; len<<=1){
+    const ang = -2 * Math.PI / len;
+    const wlenR = Math.cos(ang), wlenI = Math.sin(ang);
+    for(let i=0;i<n;i+=len){
+      let wr=1, wi=0;
+      for(let k=0;k<len/2;k++){
+        const uR = re[i+k], uI = im[i+k];
+        const vR = re[i+k+len/2]*wr - im[i+k+len/2]*wi;
+        const vI = re[i+k+len/2]*wi + im[i+k+len/2]*wr;
+        re[i+k] = uR + vR; im[i+k] = uI + vI;
+        re[i+k+len/2] = uR - vR; im[i+k+len/2] = uI - vI;
+        const nextR = wr*wlenR - wi*wlenI;
+        wi = wr*wlenI + wi*wlenR;
+        wr = nextR;
+      }
+    }
+  }
+}
+
+function frameBands(samples, start){
+  const re = new Float32Array(FFT_SIZE);
+  const im = new Float32Array(FFT_SIZE);
+  for(let i=0;i<FFT_SIZE;i++){ re[i] = (samples[start+i] || 0) * hann[i]; im[i] = 0; }
+  fftRadix2(re, im);
+
+  const vec = [];
+  const binHz = TARGET_RATE / FFT_SIZE;
+  for(const [lo,hi] of BANDS){
+    const b0 = Math.max(1, Math.floor(lo/binHz));
+    const b1 = Math.min(FFT_SIZE/2-1, Math.ceil(hi/binHz));
+    let sum = 0;
+    for(let b=b0;b<=b1;b++) sum += Math.sqrt(re[b]*re[b] + im[b]*im[b]);
+    vec.push(Math.log1p(sum));
+  }
+  const mean = vec.reduce((a,b)=>a+b,0) / vec.length;
+  const centered = vec.map(x=>x-mean);
+  const norm = Math.sqrt(centered.reduce((a,b)=>a+b*b,0)) || 1;
+  return centered.map(x=>x/norm);
+}
+
+function makeFingerprint(buffer){
+  const samples = toMonoDownsample(buffer);
+  const frames = [];
+  for(let start=0; start + FFT_SIZE < samples.length; start += HOP_SIZE){
+    frames.push(frameBands(samples, start));
+  }
+  return frames;
+}
+
+function frameSimilarity(a,b){
+  let s=0;
+  for(let i=0;i<a.length;i++) s += a[i] * b[i];
+  return s;
+}
+
+function sequenceScore(sampleFrames, songFrames){
+  if(sampleFrames.length === 0 || songFrames.length < sampleFrames.length) return -999;
+  let best = -999;
+  for(let start=0; start <= songFrames.length - sampleFrames.length; start++){
+    let total = 0;
+    for(let i=0;i<sampleFrames.length;i++) total += frameSimilarity(sampleFrames[i], songFrames[start+i]);
+    const avg = total / sampleFrames.length;
+    if(avg > best) best = avg;
+  }
+  return best;
+}
+
+function confidenceFromScore(score){
+  return Math.round(Math.max(0, Math.min(1, (score + 1) / 2)) * 100);
+}
+
+async function buildLibrary(){
+  library = [];
+  setBusy(true);
+  setResult("Building...");
+  setStatus("Loading BGM files...\nThis may take a while on phone.");
+
+  try{
+    for(let i=0;i<bgmFiles.length;i++){
+      const file = bgmFiles[i];
+      setStatus(`Building library ${i+1}/${bgmFiles.length}\n${file}`);
+      const buffer = await loadAudioFile(file);
+      library.push({ name:file.replace(".mp3",""), fingerprint:makeFingerprint(buffer) });
+      await new Promise(r=>setTimeout(r,20));
+    }
+    setStatus(`Library ready. Loaded ${library.length} BGM files.\nNow click Start Listening.`);
+    setResult("Ready");
+  }catch(e){
+    console.error(e);
+    setStatus(`Error: ${e.message}\nCheck that this file exists inside /bgm exactly.`);
+    setResult("Error");
+  }finally{
+    setBusy(false);
+  }
+}
+
+async function startListening(){
+  if(library.length === 0){ setStatus("Please click Build BGM Library first."); return; }
+
+  setBusy(true);
+  setResult("Scanning...");
+  setStatus("Listening for 8 seconds...");
+
+  try{
+    await getAudioContext();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    });
+
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.start();
+    setTimeout(()=>recorder.stop(), 8000);
+
+    recorder.onstop = async () => {
+      try{
+        stream.getTracks().forEach(t=>t.stop());
+        setStatus("Analyzing...");
+
+        const blob = new Blob(chunks, {type:"audio/webm"});
+        const arr = await blob.arrayBuffer();
+        const ctx = await getAudioContext();
+        const buffer = await ctx.decodeAudioData(arr);
+        const samplePrint = makeFingerprint(buffer);
+
+        let results = library.map(song => ({ name:song.name, score:sequenceScore(samplePrint, song.fingerprint) }));
+        results.sort((a,b)=>b.score-a.score);
+
+        const best = results[0];
+        setResult(best.name);
+        setStatus(
+          `Best match: ${best.name}\nConfidence: ${confidenceFromScore(best.score)}%\n\nTop 5:\n` +
+          results.slice(0,5).map(r => `${r.name} — ${confidenceFromScore(r.score)}%`).join("\n")
+        );
+      }catch(e){
+        console.error(e);
+        setStatus("Scan failed. Try again with clearer/louder BGM.");
+        setResult("Error");
+      }finally{
+        setBusy(false);
+      }
+    };
+  }catch(e){
+    console.error(e);
+    setStatus("Microphone permission denied or blocked.\nOpen the GitHub Pages link in Safari/Chrome and allow microphone.");
+    setResult("Mic blocked");
+    setBusy(false);
+  }
+}
+</script>
+</body>
+</html>
