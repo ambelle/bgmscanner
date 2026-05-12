@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>TOZ BGM Scanner</title>
+  <style>
+    body {
+      background: #111827;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 35px;
+    }
+    button {
+      padding: 14px 22px;
+      font-size: 17px;
+      border: 0;
+      border-radius: 12px;
+      cursor: pointer;
+      margin: 8px;
+    }
+    #result {
+      margin-top: 25px;
+      font-size: 32px;
+      font-weight: bold;
+      color: #7dd3fc;
+    }
+    #status {
+      margin-top: 15px;
+      color: #cbd5e1;
+      white-space: pre-line;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>TOZ BGM Scanner</h1>
+
+  <button onclick="buildLibrary()">Build BGM Library</button>
+  <button onclick="startListening()">🎤 Start Listening</button>
+
+  <div id="status">Click “Build BGM Library” first.</div>
+  <div id="result">Waiting...</div>
+
+<script>
+const bgmFiles = [
+  "Temple of Time.mp3",
+  "Sleepywood.mp3",
+  "Shanghai.mp3",
+  "Showa.mp3",
+  "Rien.mp3",
+  "Perion.mp3",
+  "Orbis.mp3",
+  "Omega Sector.mp3",
+  "New Leaf City.mp3",
+  "Nautilus.mp3",
+  "Mushroom Shrine.mp3",
+  "Mu Lung.mp3",
+  "Magatia.mp3",
+  "Ludibrium.mp3",
+  "Lith Harbor.mp3",
+  "Leafre.mp3",
+  "Korean Folk Town.mp3",
+  "Kerning City.mp3",
+  "Kampung Village.mp3",
+  "Herb Town.mp3",
+  "Henesys.mp3",
+  "Golden Temple.mp3",
+  "Florina Beach.mp3",
+  "Ereve.mp3",
+  "Ellinia.mp3",
+  "Ellin Forest.mp3",
+  "El Nath.mp3",
+  "CBD.mp3",
+  "Boat Quay Town.mp3",
+  "Ariant.mp3",
+  "Aquarium.mp3",
+  "Amoria.mp3"
+];
+
+let audioCtx;
+let library = [];
+
+function setStatus(text) {
+  document.getElementById("status").innerText = text;
+}
+
+function setResult(text) {
+  document.getElementById("result").innerText = text;
+}
+
+async function getAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioCtx;
+}
+
+async function loadAudioFile(file) {
+  const ctx = await getAudioContext();
+  const res = await fetch("bgm/" + encodeURIComponent(file));
+  if (!res.ok) throw new Error("Cannot load " + file);
+  const arr = await res.arrayBuffer();
+  return await ctx.decodeAudioData(arr);
+}
+
+function monoData(buffer) {
+  const data = buffer.getChannelData(0);
+  const step = Math.floor(buffer.sampleRate / 100); // 100 samples/sec rough shape
+  const out = [];
+
+  for (let i = 0; i < data.length; i += step) {
+    let sum = 0;
+    for (let j = i; j < i + step && j < data.length; j++) {
+      sum += Math.abs(data[j]);
+    }
+    out.push(sum / step);
+  }
+
+  return normalize(out);
+}
+
+function normalize(arr) {
+  const mean = arr.reduce((a,b) => a + b, 0) / arr.length;
+  const centered = arr.map(x => x - mean);
+  const max = Math.max(...centered.map(x => Math.abs(x))) || 1;
+  return centered.map(x => x / max);
+}
+
+function similarity(a, b) {
+  const len = Math.min(a.length, b.length);
+  let dot = 0, aa = 0, bb = 0;
+
+  for (let i = 0; i < len; i++) {
+    dot += a[i] * b[i];
+    aa += a[i] * a[i];
+    bb += b[i] * b[i];
+  }
+
+  return dot / (Math.sqrt(aa) * Math.sqrt(bb) || 1);
+}
+
+function bestSlidingScore(sample, full) {
+  const sampleLen = sample.length;
+  let best = -999;
+
+  for (let start = 0; start < full.length - sampleLen; start += 20) {
+    const slice = full.slice(start, start + sampleLen);
+    const score = similarity(sample, slice);
+    if (score > best) best = score;
+  }
+
+  return best;
+}
+
+async function buildLibrary() {
+  library = [];
+  setResult("Building...");
+  setStatus("Loading BGM files...");
+
+  for (let i = 0; i < bgmFiles.length; i++) {
+    const file = bgmFiles[i];
+    setStatus(`Loading ${i + 1}/${bgmFiles.length}: ${file}`);
+
+    try {
+      const buffer = await loadAudioFile(file);
+      const fingerprint = monoData(buffer);
+
+      library.push({
+        name: file.replace(".mp3", ""),
+        fingerprint
+      });
+    } catch (e) {
+      console.error(e);
+      setStatus(`Error loading: ${file}\nCheck spelling and file name.`);
+      return;
+    }
+  }
+
+  setStatus(`Library ready. Loaded ${library.length} BGM files.\nNow click Start Listening.`);
+  setResult("Ready");
+}
+
+async function startListening() {
+  if (library.length === 0) {
+    setStatus("Please click Build BGM Library first.");
+    return;
+  }
+
+  setResult("Scanning...");
+  setStatus("Listening for 7 seconds...");
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+
+    recorder.ondataavailable = e => chunks.push(e.data);
+    recorder.start();
+
+    setTimeout(() => recorder.stop(), 7000);
+
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(track => track.stop());
+
+      const blob = new Blob(chunks, { type: "audio/webm" });
+      const arr = await blob.arrayBuffer();
+      const ctx = await getAudioContext();
+      const buffer = await ctx.decodeAudioData(arr);
+
+      const samplePrint = monoData(buffer);
+
+      let results = library.map(song => ({
+        name: song.name,
+        score: bestSlidingScore(samplePrint, song.fingerprint)
+      }));
+
+      results.sort((a, b) => b.score - a.score);
+
+      const best = results[0];
+      const confidence = Math.round(Math.max(0, best.score) * 100);
+
+      setResult(best.name);
+      setStatus(
+        `Best match: ${best.name}\nConfidence: ${confidence}%\n\nTop 3:\n` +
+        results.slice(0, 3).map(r =>
+          `${r.name} — ${Math.round(Math.max(0, r.score) * 100)}%`
+        ).join("\n")
+      );
+    };
+
+  } catch (e) {
+    console.error(e);
+    setStatus("Microphone permission denied or blocked.\nUse http://localhost:8000 or GitHub Pages HTTPS.");
+  }
+}
+</script>
+</body>
+</html>
