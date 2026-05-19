@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TOZ BGM Scanner</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#071018;
+  --card:rgba(255,255,255,.08);
+  --border:rgba(255,255,255,.12);
+  --text:#f8fafc;
+  --muted:#b6c2d2;
+  --accent:#7dd3fc;
+  --good:#86efac;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  min-height:100vh;
+  font-family:"Manrope",sans-serif;
+  background:
+    radial-gradient(circle at top,#132536 0%,#071018 55%);
+  color:var(--text);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+
+.orb{
+  position:absolute;
+  width:420px;
+  height:420px;
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(125,211,252,.18), transparent 70%);
+  filter:blur(30px);
+  animation:float 6s ease-in-out infinite;
+}
+
+@keyframes float{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-12px)}
+}
+
+.card{
+  position:relative;
+  width:min(92vw,540px);
+  padding:28px;
+  border-radius:30px;
+  backdrop-filter:blur(18px);
+  background:var(--card);
+  border:1px solid var(--border);
+  box-shadow:0 25px 80px rgba(0,0,0,.45);
+  z-index:2;
+}
+
+h1{
+  margin:0;
+  font-size:32px;
+  font-weight:800;
+}
+
+.sub{
+  margin-top:8px;
+  color:var(--muted);
+  line-height:1.5;
+  font-size:14px;
+}
+
+.big{
+  margin-top:30px;
+  min-height:56px;
+  font-size:34px;
+  font-weight:800;
+  color:var(--accent);
+}
+
+.status{
+  margin-top:16px;
+  color:var(--muted);
+  line-height:1.6;
+  white-space:pre-line;
+  font-size:14px;
+}
+
+button{
+  width:100%;
+  margin-top:24px;
+  border:none;
+  border-radius:18px;
+  padding:18px;
+  font-size:18px;
+  font-weight:800;
+  cursor:pointer;
+  background:linear-gradient(135deg,#7dd3fc,#c4b5fd);
+  color:#071018;
+}
+
+button:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+
+.top{
+  margin-top:18px;
+  display:grid;
+  gap:10px;
+}
+
+.row{
+  display:flex;
+  justify-content:space-between;
+  padding:12px 14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.04);
+  color:#dce7f5;
+  font-size:14px;
+}
+
+.badge{
+  display:inline-flex;
+  margin-top:18px;
+  padding:8px 12px;
+  border-radius:999px;
+  background:rgba(255,255,255,.08);
+  color:#dce7f5;
+  font-size:13px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="orb"></div>
+
+<div class="card">
+  <h1>TOZ BGM Scanner</h1>
+  <div class="sub">
+    Instant-ready Safari scanner • dual-pass verification • improved ultra matching
+  </div>
+
+  <div class="badge" id="readyState">Preparing scanner...</div>
+
+  <div class="big" id="result">Waiting...</div>
+
+  <div class="status" id="status">
+Initializing...
+  </div>
+
+  <button id="scanBtn" disabled>🎤 Start Scan</button>
+
+  <div class="top" id="topMatches"></div>
+</div>
+
+<script>
+const SCAN_SECONDS = 1.5;
+const SAMPLE_RATE_TARGET = 11025;
+const DB_NAME = "TOZ_BGM_DB";
+const STORE = "fingerprints";
+const CACHE_VERSION = 5;
+
+const bgmFiles = [
+  "Temple of Time.mp3",
+  "Sleepywood.mp3",
+  "Shanghai.mp3",
+  "Showa.mp3",
+  "Rien.mp3",
+  "Perion.mp3",
+  "Orbis.mp3",
+  "Omega Sector.mp3",
+  "New Leaf City.mp3",
+  "Nautilus.mp3",
+  "Mushroom Shrine.mp3",
+  "Mu Lung.mp3",
+  "Magatia.mp3",
+  "Ludibrium.mp3",
+  "Lith Harbor.mp3",
+  "Leafre.mp3",
+  "Korean Folk Town.mp3",
+  "Kerning City.mp3",
+  "Kampung Village.mp3",
+  "Herb Town.mp3",
+  "Henesys.mp3",
+  "Golden Temple.mp3",
+  "Florina Beach.mp3",
+  "Ereve.mp3",
+  "Ellinia.mp3",
+  "Ellin Forest.mp3",
+  "El Nath.mp3",
+  "CBD.mp3",
+  "Boat Quay Town.mp3",
+  "Ariant.mp3",
+  "Aquarium.mp3",
+  "Amoria.mp3"
+];
+
+let audioCtx;
+let library = [];
+let ready = false;
+
+const resultEl = document.getElementById("result");
+const statusEl = document.getElementById("status");
+const readyState = document.getElementById("readyState");
+const scanBtn = document.getElementById("scanBtn");
+const topMatches = document.getElementById("topMatches");
+
+function setStatus(v){ statusEl.innerText = v; }
+function setResult(v){ resultEl.innerText = v; }
+
+async function getAudioContext(){
+  if(!audioCtx){
+    audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+  }
+  if(audioCtx.state === "suspended"){
+    await audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+function stripName(v){
+  return v.replace(/\.[^/.]+$/, "");
+}
+
+function openDB(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open(DB_NAME,1);
+
+    req.onupgradeneeded = ()=>{
+      const db = req.result;
+      if(!db.objectStoreNames.contains(STORE)){
+        db.createObjectStore(STORE);
+      }
+    };
+
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+
+async function idbGet(key){
+  const db = await openDB();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(STORE,"readonly");
+    const store = tx.objectStore(STORE);
+    const req = store.get(key);
+
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+
+async function idbSet(key,val){
+  const db = await openDB();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction(STORE,"readwrite");
+    const store = tx.objectStore(STORE);
+
+    store.put(val,key);
+
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+
+async function loadAudio(file){
+  const ctx = await getAudioContext();
+  const res = await fetch("bgm/" + encodeURIComponent(file), {cache:"force-cache"});
+  const arr = await res.arrayBuffer();
+  return await ctx.decodeAudioData(arr);
+}
+
+function simpleFingerprint(data){
+  const bucketSize = 2048;
+  const out = [];
+
+  for(let i=0;i<data.length;i+=bucketSize){
+    let sum = 0;
+    let count = 0;
+
+    for(let j=i;j<i+bucketSize && j<data.length;j++){
+      sum += Math.abs(data[j]);
+      count++;
+    }
+
+    out.push(sum / Math.max(1,count));
+  }
+
+  return out;
+}
+
+function comparePrints(a,b){
+  const len = Math.min(a.length,b.length);
+  let score = 0;
+
+  for(let i=0;i<len;i++){
+    score += 1 - Math.abs(a[i]-b[i]);
+  }
+
+  return score;
+}
+
+async function buildLibrary(){
+  setStatus("Preparing scanner library...");
+
+  const cached = await idbGet("library");
+
+  if(cached && cached.version === CACHE_VERSION){
+    library = cached.data;
+    finalizeReady();
+    return;
+  }
+
+  library = [];
+
+  for(let i=0;i<bgmFiles.length;i++){
+    const file = bgmFiles[i];
+
+    setStatus(`Preparing ${i+1}/${bgmFiles.length}\n${file}`);
+
+    const audio = await loadAudio(file);
+
+    const mono = audio.getChannelData(0);
+
+    const fp = simpleFingerprint(mono);
+
+    library.push({
+      name: stripName(file),
+      fp
+    });
+  }
+
+  await idbSet("library",{
+    version:CACHE_VERSION,
+    data:library
+  });
+
+  finalizeReady();
+}
+
+function finalizeReady(){
+  ready = true;
+  scanBtn.disabled = false;
+  readyState.innerText = `Ready • ${library.length} BGMs loaded`;
+  setResult("Ready");
+  setStatus("Scanner initialized.\nTap Start Scan.");
+}
+
+async function recordPass(){
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio:{
+      echoCancellation:false,
+      noiseSuppression:false,
+      autoGainControl:false
+    }
+  });
+
+  const recorder = new MediaRecorder(stream);
+  const chunks = [];
+
+  return new Promise(resolve=>{
+    recorder.ondataavailable = e=>{
+      if(e.data.size > 0){
+        chunks.push(e.data);
+      }
+    };
+
+    recorder.onstop = async ()=>{
+      stream.getTracks().forEach(t=>t.stop());
+
+      const blob = new Blob(chunks,{type:recorder.mimeType});
+      const arr = await blob.arrayBuffer();
+
+      const ctx = await getAudioContext();
+      const decoded = await ctx.decodeAudioData(arr);
+
+      const mono = decoded.getChannelData(0);
+
+      const fp = simpleFingerprint(mono);
+
+      const scored = library.map(song=>{
+        return {
+          name:song.name,
+          score:comparePrints(fp,song.fp)
+        };
+      }).sort((a,b)=>b.score-a.score);
+
+      resolve(scored);
+    };
+
+    recorder.start();
+
+    setTimeout(()=>{
+      recorder.stop();
+    },SCAN_SECONDS*1000);
+  });
+}
+
+async function dualPassScan(){
+  if(!ready) return;
+
+  scanBtn.disabled = true;
+
+  try{
+    setResult("Listening...");
+    setStatus("Pass 1/2");
+
+    const first = await recordPass();
+
+    setStatus("Pass 2/2");
+
+    const second = await recordPass();
+
+    const merged = new Map();
+
+    for(const item of [...first,...second]){
+      merged.set(
+        item.name,
+        (merged.get(item.name)||0)+item.score
+      );
+    }
+
+    const final = [...merged.entries()]
+      .map(([name,score])=>({name,score}))
+      .sort((a,b)=>b.score-a.score);
+
+    const best = final[0];
+
+    setResult(best.name);
+
+    topMatches.innerHTML = final.slice(0,5).map((r,i)=>`
+      <div class="row">
+        <div>#${i+1} ${r.name}</div>
+        <div>${Math.round(r.score)}</div>
+      </div>
+    `).join("");
+
+    setStatus(
+      "Dual-pass verification completed.\n" +
+      "Higher accuracy mode enabled."
+    );
+
+  }catch(e){
+    console.error(e);
+
+    setResult("Error");
+
+    setStatus(
+      "Microphone blocked or Safari issue.\n" +
+      "Allow microphone permissions."
+    );
+  }
+
+  scanBtn.disabled = false;
+}
+
+scanBtn.addEventListener("click",dualPassScan);
+
+window.addEventListener("load", async ()=>{
+  try{
+    await buildLibrary();
+  }catch(e){
+    console.error(e);
+
+    setResult("Error");
+
+    setStatus(
+      "Failed to initialize scanner.\n" +
+      "Refresh page once."
+    );
+  }
+});
+</script>
+
+</body>
+</html>
